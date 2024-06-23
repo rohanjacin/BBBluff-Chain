@@ -38,3 +38,17 @@ export class Hands extends RuntimeModule<unknown> {
 	}
 }
 
+export const HandGen = Experimental.ZkProgram({
+
+	// Name and state of deck 
+	name: "Hand",
+	publicInput: CardState,
+	publicOutput: CardState,
+
+	methods: {
+
+
+
+	}
+}
+
