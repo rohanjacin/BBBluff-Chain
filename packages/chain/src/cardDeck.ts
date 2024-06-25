@@ -15,7 +15,7 @@ import { Field,
 // suite - suite of the card
 // rank - rank of the card
 
-class CardState extends Struct({
+export class CardState extends Struct({
 	qty: Field,
 	suite: Field,
 	rank: Field,
@@ -61,7 +61,7 @@ class CardState extends Struct({
 	}
 };
 
-class CardIds extends Struct({
+export class CardIds extends Struct({
 	ids: Provable.Array(Field, 52),
 }){
 /*	static init = () => {
@@ -74,7 +74,7 @@ class CardIds extends Struct({
 	},*/	
 };
 
-class DeckState extends Struct({
+export class DeckState extends Struct({
 	numCards: Field,
 	cards: CardIds,
 }) {
@@ -125,7 +125,7 @@ export const CardGen = Experimental.ZkProgram({
 	// Name and state of deck 
 	name: "Card",
 	publicInput: CardState,
-	publicOutput: CardState,
+	publicOutput: Field,
 
 	methods: {
 		// Check card suite and rank 
@@ -133,7 +133,7 @@ export const CardGen = Experimental.ZkProgram({
 			privateInputs: [Field, Field, Field],
 
 			method(newState: CardState, 
-				qty: Field, suite: Field, rank: Field): CardState {
+				qty: Field, suite: Field, rank: Field): Field {
 
 				// Check card inputs against claimed state 
 				const computedState = CardState.checkCard(newState,
@@ -142,13 +142,13 @@ export const CardGen = Experimental.ZkProgram({
 
 				const outputState = CardState.nullifyCard(computedState,
 									 qty, suite, rank);
-				return outputState;
+				return outputState.id;
 			},
 		},
 	},
 });
 
-const CardProof =  Experimental.ZkProgram.Proof(CardGen);
+export const CardProof =  Experimental.ZkProgram.Proof(CardGen);
 
 // Card deck zk circuit/program
 const DeckGen = Experimental.ZkProgram({
@@ -156,24 +156,27 @@ const DeckGen = Experimental.ZkProgram({
 	// Name and state of deck 
 	name: "Card-Deck",
 	publicInput: DeckState,
+	publicOutput: CardIds,
 
 	methods: {
 		// Create base 
 		create: {
 			privateInputs: [],
 
-			async method(state: DeckState) {
+			method(state: DeckState): CardIds {
 				DeckState.assertInitialState(state);
+
+				return state.cards;
 			},
 		},
 
 		// Add card to deck specifying suite and rank 
 		add: {
-			privateInputs: [SelfProof<DeckState, void>, CardProof],
+			privateInputs: [SelfProof<DeckState, CardIds>, CardProof],
 
-			async method(newState: DeckState, 
-				earlierProof: SelfProof<DeckState, void>,
-				cardProof: Proof<CardState, CardState>) {
+			method(newState: DeckState, 
+				earlierProof: SelfProof<DeckState, CardIds>,
+				cardProof: Proof<CardState, Field>): CardIds {
 
 				// Verify previous deck state proof 
 				earlierProof.verify();
@@ -184,13 +187,17 @@ const DeckGen = Experimental.ZkProgram({
 				// Check card inputs against claimed state 
 				const computedState = DeckState.add(
 								earlierProof.publicInput,
-								cardProof.publicOutput.id);
+								cardProof.publicOutput);
 
 				DeckState.assertEquals(computedState, newState);
+
+				return computedState.cards; 
 			},
 		},
 	},
 });
+
+export const DeckProof =  Experimental.ZkProgram.Proof(DeckGen);
 
 export async function initCards() {
 
@@ -220,29 +227,29 @@ export async function initCards() {
 	for (let i = 1, suite = 1, deck = deck0, dproof = dproof0;
 		suite <= 4; suite++) {
 
-		for (rank = 1; rank <= 52; rank++, i++) {
+		for (rank = 1; rank <= 13; rank++, i++) {
 			console.log(`working on card${i}`);
 			card = CardState.newCard(Field(1), Field(suite), Field(rank));
 			cproof = await CardGen.checkCard(card, Field(1), Field(suite), Field(rank));
 			console.log("proving card done");
-			ids.push(cproof.publicOutput.id);
+			ids.push(cproof.publicOutput);
 
 			console.log(`qty:${cproof.publicInput.qty.toString()}` +
 				` suite:${cproof.publicInput.suite.toString()}` + 
 				`rank:${cproof.publicInput.rank.toString()}` + 
-				`id:${cproof.publicOutput.id}`);
+				`id:${cproof.publicOutput}`);
 
-			console.log(`cproof.id:${cproof.publicOutput.id}`);
+			console.log(`cproof.id:${cproof.publicOutput}`);
 			console.log(`ids[${i-1}]:`, ids);
 
-			deck = DeckState.add(deck, cproof.publicOutput.id);
+			deck = DeckState.add(deck, cproof.publicOutput);
 			dproof = await DeckGen.add(deck, dproof, cproof);
 			console.log(`numCards:${dproof.publicInput.numCards.toString()}` +
 				` cards:${dproof.publicInput.cards.ids}`);
 
 			deck = deck;
 			dproof = dproof;
-			console.log("Deckcards[0]:", dproof.publicInput.cards.ids[0].toBigInt());
+			console.log("Deckcards[0]:", dproof.publicInput.cards.ids[i-1].toBigInt());
 		}
 	}
 
@@ -250,4 +257,6 @@ export async function initCards() {
 	console.log("cards[0]:", cards.ids[0].toBigInt());
 } 
 
-initCards();
+
+
+//initCards();

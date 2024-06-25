@@ -3,7 +3,7 @@ import { Balances } from "./balances";
 import { Deck } from "./deck";
 import { CardBalances } from "./cardBalances";
 import { PlayerDeck } from "./playerDeck";
-import { Hands } from "./hand";
+//import { Hands } from "./hand";
 
 import { ModulesConfig } from "@proto-kit/common";
 
@@ -11,7 +11,7 @@ export const modules = {
   Balances,
   CardBalances,
   Deck,
-  Hands,
+  //Hands,
   PlayerDeck,
 };
 
@@ -21,7 +21,7 @@ export const config: ModulesConfig<typeof modules> = {
   },
   CardBalances: {},
   Deck: {},
-  Hands: {},
+  //Hands: {},
   PlayerDeck: {},
 };
 
