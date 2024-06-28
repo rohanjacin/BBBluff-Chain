@@ -14,5 +14,8 @@
     "turbo": "latest"
   },
   "packageManager": "pnpm@8.6.10",
-  "name": "starter-kit"
+  "name": "starter-kit",
+  "dependencies": {
+    "@panva/hkdf": "^1.2.0"
+  }
 }

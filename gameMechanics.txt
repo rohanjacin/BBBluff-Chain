@@ -1,0 +1,68 @@
+I thought about your point. Here's how i think i might do it.
+
+1. The players are part of a semaphore protocol group, each have a shared secret with the Dealer/House. Each generate their member proof
+at the start of the game. The secret is shared via email/p2p messenger handle etc. (basically out of band).
+
+2. The players also rely on derived session keys for each transaction
+with the dealer/house. A waku (p2p private channel) is setup using the shared secret between a player and dealer/house. The session key generation on both ends could use a HKDF with the shared secret as the key material and incremental counter as the info ( maybe a better way).
+
+3. The house/dealer generates and distributes cardids unique to a player
+in the following way.
+   a. Create a card proof with private inputs 
+   	  card rank (A, 2, 3, .. J, Q, K  etc), suite, session key
+   b. The card proof public output is the posiedon hash of the field
+      elements rank, suite, session key. This will the card id.
+   c. The card public inputs will be the rank, suite and
+      posiedonhash(session key). The card can be verified by the
+      players by iterating over the possible ranks, suites combinations. Since the verifcation cost is very low it should be ok.
+   d. A player receives all his/her cards as an array of card proofs
+      in its entity. One card proof is around 30kB so 13 cards will be around 400kB, it may still be ok given that this will happen just once at the start of the game.
+   e. The players also receive the deck proof which is the recursive
+      proof of all the cards, in addition to the merkle tree root of the deck.
+
+4. When a player has to play a hand (1 or 2 or 3 or 4 cards) 
+   the players creates a hand proof(recursive card proof) in the following way
+   a. The proof contains a the following private inputs, the 
+   	  card proof the session key and the rank. 	
+   b. The proof output will be a posideon hash of the session key
+      along with the card proof public output (original card id), this output will be a hand id (nullified card id).
+   c. The public inputs shall be the posiedon hash of the session key,
+      and the rank i.e claim the player makes (e.g 1 Ace, 2 Ace ..etc )
+   d. In case of a single card hand the proof verifies if the claim
+      is true if the session key hash is known.
+   e. In case of multiple card hand the proof will be a recursive
+      card proof, and hence the proof verifies if all card proofs
+      are true as per the claim i.e rank, provided the hash of the session key as a public input is known. The proof output in this case will be an array of unique hand id (essentially nullified card id's)
+
+5. When a player calls a bluff, and 
+   a. In case its not a bluff then the following happens. 
+      The session key of the player who played the hand is shared
+   	with the player who tried to call the bluff. The dealer/house shares this session key via the waku private channel with the current player.This allows a player to verify the hand proof at his/her end, it also allows the player to know the original card ids in the hand in the following way
+   	  
+   	  i. The dealer/house maintains a merkel tree for each round of play, of the cards that are in the hand of the current player and also of the previous player(s). By round i mean until everyone passes and have no hands to play for the given rank. So
+        the size of the merkel tree could be max 52 depth. 
+   	  
+        ii. The dealer/house sends this tree to the player that tried to called the bluff, the player also has with him/her the list of hand ids of the hand as part of the hand proof sent to the dealer/house. The index of this list is the leaf index of the merkle tree and the value at the index in the merkle tree is the original card id of the card that was distributed to the player. In this way the player now knows the real suite of the card by simply hashing the card id with of the hand rank, the session key of the player who played the hand and a combination of 4 suite values which ever combination equates to the hand id in question.
+
+5.a (continuation ...)
+        iii. In case when there are multiple hands, only the top most hand is verified, the hands of the other players are not verified, here everthing happens as in ii) but now the player has to compute the hash of a combination of rank (1-13), suite(1-4) except the combinations already used in the hand(s) above.
+        In the worst case the combinations would be 52 hash computations, which is still ok.
+
+        iv. The dealer deletes the merkle tree for this round, a point to note is that the dealer also has to provide a proof that the card ids in the hand merkle tree are indeed from the primary merkle tree of its deck when the game started, I think this is possible, but thought about its circuit. So essentially the player-dealer transcation size would be the size of the hand merkle tree and the size of the deck proof.
+
+   b. In case its a bluff then the following happens.
+      i. The player that bluffed gets all the cards in his/her hand back.
+      ii. In case if there were other previous hands played then the same steps follow as in 5a (i-iv)
+
+6. The game score if maintained by the dealer/house as map of player- card count in a provable merkle map.
+
+7. All proofs are generated off-chain. 
+
+Note: This is just my chain of thoughts, would love to know your suggestions. Am only a 1 month baby to ZK, mina. Also hashing of
+rank, suite and session key as an output of the card proof is
+violating the zero knowledge part of the proof, but still has
+DLP hardness in my view, well that the best i could come up with.
+   
+
+
+

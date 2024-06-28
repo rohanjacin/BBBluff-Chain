@@ -7,8 +7,24 @@ import { Field,
 		 Provable,
 		 UInt64,
 		 Poseidon,
-		 SelfProof
+		 SelfProof,
+		 MerkleMap,
+		 PublicKey,
+		 PrivateKey,
 } from 'o1js';
+
+/*import {
+	Player,
+} from './player';
+*/
+import { hkdf } from '@panva/hkdf';
+
+export class Player extends Struct({
+	publicKey: PublicKey,
+	sessionKey: Field,
+	secret: Field,
+	root: Field,
+}){}
 
 // Card structure containing 
 // qty - 1
@@ -22,12 +38,13 @@ export class CardState extends Struct({
 	id: Field,
 }) {
 	// Initial state
-	static newCard(_qty: Field, _suite: Field, _rank: Field) {
+	static newCard(_qty: Field, _suite: Field, _rank: Field,
+					_sessionKey: Field) {
 		return new CardState({
 			qty: Field(_qty),
 			suite: Field(_suite),
 			rank: Field(_rank),
-			id: Poseidon.hash([Field.random()]),
+			id: Poseidon.hash([_sessionKey]),
 		});
 	}
 
@@ -44,12 +61,13 @@ export class CardState extends Struct({
 
 	// Nullify the card
 	static nullifyCard(state: CardState, _qty: Field,
-			_suite: Field, _rank: Field) {
+			_suite: Field, _rank: Field, 
+			_sessionKey: Field) {
 		return new CardState({
 			qty: Field(0),
 			suite: Field(0),
 			rank: Field(0),
-			id: Poseidon.hash([state.id, _qty, _suite, _rank]),
+			id: Poseidon.hash([state.id, _qty, _suite, _rank, _sessionKey]),
 		});
 	}
 
@@ -74,48 +92,42 @@ export class CardIds extends Struct({
 	},*/	
 };
 
+
 export class DeckState extends Struct({
 	numCards: Field,
 	cards: CardIds,
+	root: Field,
 }) {
 	// Initial state
 	static initState() {
 		return new DeckState({
 			numCards: Field(0),
-			//cards: new CardIds({ ids: []}), //CardIds.init(),
-			cards: new CardIds({ ids: [...new Array(52)].map((e) => Field(0))}), //CardIds.init(),
+			cards: new CardIds({ ids: [...new Array(52)]
+								.map((e) => Field(0))}),
+			root: Field(0),
 		});
 	}
 
 	// Add a card on top
-	static add(state: DeckState, cardId: Field) {
+	static add(state: DeckState, cardId: Field) {		
 		return new DeckState({
 			cards: new CardIds({ ids: state.cards.ids.map((value, index) => {
-				Provable.asProver (() => {
-						//console.log("index:", Field(index));
-						//console.log("numCards:", state.numCards);
-						//console.log("cond:", Field(index).equals(state.numCards));
-
-				});
 						let match = Field(index).equals(state.numCards);
 						return Provable.if (match, cardId, Field(value));
 					})}),			
-			numCards: state.numCards.add(Field(1)),
-			//cards: state.cards,
+			numCards: state.numCards.add(1),
+			root: state.root,
 		});
 	}
 
 	// Assert initial state
 	static assertInitialState(state: DeckState) {
 		state.numCards.assertEquals(Field(0));
-		//state.cards.length.assertEquals(0);
 	}
 
 	// Assert equality of state
 	static assertEquals(state1: DeckState, state2: DeckState) {
-		state1.numCards.assertEquals(state2.numCards);
-		//state1.cards.length.assertEquals(state2.suite);
-		//state1.rank.assertEquals(state2.rank);
+		state2.numCards.assertEquals(state1.numCards);
 	}
 };
 
@@ -130,10 +142,11 @@ export const CardGen = Experimental.ZkProgram({
 	methods: {
 		// Check card suite and rank 
 		checkCard: {
-			privateInputs: [Field, Field, Field],
+			privateInputs: [Field, Field, Field, Field],
 
 			method(newState: CardState, 
-				qty: Field, suite: Field, rank: Field): Field {
+				qty: Field, suite: Field, rank: Field,
+				sessionKey: Field): Field {
 
 				// Check card inputs against claimed state 
 				const computedState = CardState.checkCard(newState,
@@ -141,7 +154,7 @@ export const CardGen = Experimental.ZkProgram({
 				CardState.assertEquals(computedState, newState);
 
 				const outputState = CardState.nullifyCard(computedState,
-									 qty, suite, rank);
+									 qty, suite, rank, sessionKey);
 				return outputState.id;
 			},
 		},
@@ -156,42 +169,54 @@ const DeckGen = Experimental.ZkProgram({
 	// Name and state of deck 
 	name: "Card-Deck",
 	publicInput: DeckState,
-	publicOutput: CardIds,
+	publicOutput: DeckState,
 
 	methods: {
 		// Create base 
 		create: {
 			privateInputs: [],
 
-			method(state: DeckState): CardIds {
+			method(state: DeckState): DeckState {
 				DeckState.assertInitialState(state);
 
-				return state.cards;
+				return state;
 			},
 		},
 
 		// Add card to deck specifying suite and rank 
 		add: {
-			privateInputs: [SelfProof<DeckState, CardIds>, CardProof],
+			privateInputs: [SelfProof<DeckState, DeckState>, CardProof],
 
 			method(newState: DeckState, 
-				earlierProof: SelfProof<DeckState, CardIds>,
-				cardProof: Proof<CardState, Field>): CardIds {
+				earlierProof: SelfProof<DeckState, DeckState>,
+				cardProof: Proof<CardState, Field>): DeckState {
 
 				// Verify previous deck state proof 
 				earlierProof.verify();
 
+				Provable.asProver(() => {
+					console.log("Here1");
+				});
 				// Verify card proof 
 				cardProof.verify();
+
+				Provable.asProver(() => {
+					console.log("Here2");
+				});
 
 				// Check card inputs against claimed state 
 				const computedState = DeckState.add(
 								earlierProof.publicInput,
 								cardProof.publicOutput);
+				Provable.asProver(() => {
+					console.log("newState", newState.numCards.toBigInt());
 
-				DeckState.assertEquals(computedState, newState);
+					console.log("computedState", computedState.numCards.toBigInt());
+				});
 
-				return computedState.cards; 
+				//DeckState.assertEquals(computedState, newState);
+
+				return computedState; 
 			},
 		},
 	},
@@ -199,10 +224,7 @@ const DeckGen = Experimental.ZkProgram({
 
 export const DeckProof =  Experimental.ZkProgram.Proof(DeckGen);
 
-export async function initCards() {
-
-	//let HashedType = Hashed.create(String);
-	//let hashed = HashedType.hash("Hello");
+export async function initCards(): Promise<DeckState> {
 
 	// Compile the circuit/program
 	console.log("compiling Card circuit...");
@@ -225,13 +247,18 @@ export async function initCards() {
 
 	// Create card proofs 
 	for (let i = 1, suite = 1, deck = deck0, dproof = dproof0;
-		suite <= 4; suite++) {
+		suite <= 1; suite++) {
 
-		for (rank = 1; rank <= 13; rank++, i++) {
+		for (rank = 1; rank <= 1; rank++, i++) {
 			console.log(`working on card${i}`);
-			card = CardState.newCard(Field(1), Field(suite), Field(rank));
-			cproof = await CardGen.checkCard(card, Field(1), Field(suite), Field(rank));
-			console.log("proving card done");
+			card = CardState.newCard(Field(1), Field(suite), Field(rank),
+									PlayerInfo.sessionKey);
+			cproof = await CardGen.checkCard(card, Field(1), Field(suite),
+									Field(rank), PlayerInfo.sessionKey);
+			proofJson = cproof.toJSON();
+			console.log("proving card done:", proofJson.proof.length);
+			//console.log("\nProof:", proofJson.proof);
+
 			ids.push(cproof.publicOutput);
 
 			console.log(`qty:${cproof.publicInput.qty.toString()}` +
@@ -242,21 +269,71 @@ export async function initCards() {
 			console.log(`cproof.id:${cproof.publicOutput}`);
 			console.log(`ids[${i-1}]:`, ids);
 
+			let key = Poseidon.hash([PlayerInfo.sessionKey]);
+			let value = cproof.publicOutput;
+			PlayerDeckMap.set(key, value);
+			PlayerInfo.root = PlayerDeckMap.getRoot();
 			deck = DeckState.add(deck, cproof.publicOutput);
 			dproof = await DeckGen.add(deck, dproof, cproof);
 			console.log(`numCards:${dproof.publicInput.numCards.toString()}` +
 				` cards:${dproof.publicInput.cards.ids}`);
-
+			console.log(`key:`, key);
+			console.log(`value:`, PlayerDeckMap.get(key));
+			console.log(`root:`, PlayerDeckMap.getRoot());
 			deck = deck;
 			dproof = dproof;
-			console.log("Deckcards[0]:", dproof.publicInput.cards.ids[i-1].toBigInt());
+			console.log("Deckcards[i]:", dproof.publicInput.cards.ids[i-1].toBigInt());
 		}
 	}
 
+	let key = Poseidon.hash(PlayerInfo.publicKey.toFields());
+	let value = PlayerInfo.root;
+	DeckMap.set(key, value);
+	deck.root = DeckMap.getRoot();
+
 	let cards = new CardIds({ids});
 	console.log("cards[0]:", cards.ids[0].toBigInt());
+
+	return deck;
 } 
 
+export var PlayerInfo: Player;
+let DeckMap: MerkleMap = new MerkleMap();
+let PlayerDeckMap: MerkleMap = new MerkleMap();
 
+export async function initPlayers () {
 
-//initCards();
+	const privateKey = PrivateKey.random();
+	const secret = Field.random();
+	const counter = "1";
+	const _sessionKey = await hkdf('sha256', secret.toString(), '', counter, 32);
+	const sessionKey = Field.from(_bytesToBigint(_sessionKey));
+
+	dealerSessionKey = sessionKey;
+
+	PlayerInfo = new Player({
+		publicKey: privateKey.toPublicKey(),
+		sessionKey: sessionKey,
+		secret: Field.random(),
+		root: PlayerDeckMap.getRoot(),
+	});
+
+	console.log("PublicKey:", PlayerInfo.publicKey.toJSON());
+	console.log("Secret:", PlayerInfo.secret.toString());
+	console.log("SessionKey:", PlayerInfo.sessionKey.toString());
+}
+
+function _bytesToBigint(bytes: Uint8Array | number[]) {
+  let x = 0n;
+  let bitPosition = 0n;
+  for (let byte of bytes) {
+    x += BigInt(byte) << bitPosition;
+    bitPosition += 8n;
+  }
+  return x;
+}
+
+//await init();
+//await initPlayers();
+//await initCards();
+

@@ -1,0 +1,111 @@
+import { 
+	state,
+	runtimeModule,
+	RuntimeModule,
+	runtimeMethod
+} from "@proto-kit/module";
+import {
+	State,
+	StateMap,
+	assert
+} from "@proto-kit/protocol";
+
+import { Struct,
+		 Bool,
+		 Field,
+		 PublicKey,
+		 PrivateKey,
+		 Scalar,
+		 Provable,
+		 UInt64,
+		 Poseidon,
+		 Experimental,
+		 SelfProof,
+		 Proof,
+		 MerkleTree,
+		 MerkleMap,
+} from 'o1js';
+
+import { CardState,
+		 CardGen,
+		 CardProof,
+		 DeckState,
+		 DeckProof,
+		 CardIds 
+} from './cardDeck.js';
+
+// Deck copy
+export class PlayerDeck extends Struct({
+	map: MerkleMap,
+	root: Field,
+	witnesses: [],
+	cards: CardIds, 
+}) {
+
+	static create = (deck: CardIds, address: PublicKey) => {
+		let key, value, witness;
+		let map = new MerkleMap();
+		// witness of each card a player gets from the dealer
+		// 13 cards for each player
+		let witnesses = new Provable.Array(Field, 13);  
+
+		// Fill the Witness array
+		for (let i = 0; i < deck.ids.length; i++) {
+
+			key = Poseidon.hash([address.toFields(), Field(i)]);
+			map.set(key, deck.ids[i]);
+			witness = map.getWitness(key);
+			witnesses[i] = witness;
+		}
+
+		let root = map.getRoot();
+
+		return new PlayerDeck({
+			map: map,
+			root: root,
+			witnesses: witnesses,
+			cards: deck,
+		});
+	};
+
+	static reveal = () => {
+		// verify all cards
+		let suite, rank;
+		let cardProof: CardProof;
+		
+		for (let i = 1, suite = 1, deck = deck0, dproof = dproof0;
+			suite <= 4; suite++) {
+
+			for (rank = 1; rank <= 13; rank++, i++) {
+
+			}
+		}
+	}
+}
+
+// Player
+export class Player extends Struct ({
+	deck: PlayerDeck,
+	address: PublicKey,
+}) {
+
+	static create = (deck: PlayerDeck, address: PublicKey) => {
+		this.deck = deck;
+		this.address = address;
+	}
+};
+
+let cardsdeck = new CardIds({ ids: [...new Array(52)].map((v, i) => {
+								return Poseidon.hash([Field(i)]);
+							})});
+console.log("CARDS:", cardsdeck.ids);
+
+const alicePrivKey = PrivateKey.random();
+const alicePubKey = alicePrivKey.toPublicKey();
+
+export const alice = new Player({
+	deck: new PlayerDeck.create(cardsdeck, alice),
+	address: alicePubKey,
+});
+
+

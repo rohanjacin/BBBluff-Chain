@@ -22,16 +22,26 @@ import { Struct,
 		 Experimental,
 		 SelfProof,
 		 Proof,
+		 verify,
+		 VerificationKey,
 } from 'o1js';
+
+import { hkdf } from '@panva/hkdf';
 
 import { CardState,
 		 CardGen,
 		 CardProof,
 		 DeckState,
 		 DeckProof,
-		 CardIds 
-} from './cardDeck.js';
+		 CardIds,
+		 Player,
+} from '../house/cardDeck.js';
 
+/*import { PlayerDeck,
+		 Player,
+		 alice, 
+} from './player.js';
+*/
 class HandInfo extends Struct({
 	numOfCards: UInt64,
 	player: PublicKey
@@ -86,9 +96,9 @@ export class HandState extends Struct({
 	}
 
 	// Assert initial state
-	static assertInitialState(state: HandState, rank: Field) {
+	static assertInitialState(state: HandState) {
 		state.numCards.assertEquals(Field(0));
-		state.rank.assertEquals(rank);
+		state.rank.assertEquals(state.rank);
 		//state.cards.length.assertEquals(0);
 	}
 
@@ -102,7 +112,7 @@ export class HandState extends Struct({
 
 export class HandPublicInput extends Struct({
   state: HandState,
-  deckCards: CardIds,
+  playerDeckRoot: Field,
 }) {}
 
 export const HandGen = Experimental.ZkProgram({
@@ -118,40 +128,75 @@ export const HandGen = Experimental.ZkProgram({
 			privateInputs: [Field],
 
 			method(input: HandPublicInput, rank: Field): CardIds {
-				HandState.assertInitialState(input.state, rank);
+
+				Provable.asProver(() => {
+					console.log("Handgen->create..enter");
+				});
+				HandState.assertInitialState(input.state);
+				
+				Provable.asProver(() => {
+					console.log("Handgen->create..exit");
+				});
 				return new CardIds({ids: input.state.cards.ids});;
 			}
 		},
 
 		add: {
 			privateInputs: [SelfProof<HandPublicInput, CardIds>,
-							CardProof],
+							CardProof, Field],
 
 			method(input: HandPublicInput,
 				earlierProof: SelfProof<HandPublicInput, CardIds>,
-				cardProof: Proof<CardState, Field>): CardIds {
+				cardProof: Proof<CardState, Field>, playerDeckRoot: Field): CardIds {
+
+				Provable.asProver(() => {
+					console.log("Handgen->add..enter");
+				});
 
 				// Verify previous deck state proof 
 				earlierProof.verify();
 
+				Provable.asProver(() => {
+					console.log("Handgen-> earlier proof verify done");
+				});
+
 				// Verify card proof
 				cardProof.verify();
 
-				// Verify card from valid deck
-				let match: Bool = new Bool(false);
-				let cardId = cardProof.publicOutput;
+				Provable.asProver(() => {
+					console.log("Handgen-> card proof verify done");
+				});
 
-				for (let i = 0; i < 52; i++) {
-					match = input.deckCards.ids[i].equals(cardId);
-				}
-				//match.assertTrue();
+				// Verify card from valid deck
+				playerDeckRoot.assertEquals(input.playerDeckRoot);
+
+				Provable.asProver(() => {
+					console.log("Handgen->  player deckroot assert done");
+				});
+
+				// Verify the card's rank is same as hand rank
+				let card_rank = cardProof.publicInput.rank;
+				card_rank.assertEquals(input.state.rank);
+
+				Provable.asProver(() => {
+					console.log("Handgen->  card rank assert done");
+				});
 
 				// Add card to hand 
+				let cardId = cardProof.publicOutput;
 				const computedState = HandState.add(
 								earlierProof.publicInput.state,
 								cardId);
 
+				Provable.asProver(() => {
+					console.log("Handgen->  computed state done");
+				});
+
 				HandState.assertEquals(input.state, computedState);
+
+				Provable.asProver(() => {
+					console.log("Handgen->  computed state assert done");
+				});
 
 				return computedState.cards;
 			}
@@ -160,51 +205,87 @@ export const HandGen = Experimental.ZkProgram({
 	}
 });
 
-export async function initHand() {
-	console.log("compiling Card circuit...");
-	await CardGen.compile();
-	console.log("compiling finised");
+export class HandProof extends Experimental.ZkProgram.Proof(HandGen){};
 
-	console.log("compiling Hand circuit...");
-	await HandGen.compile();
-	console.log("compiling finised");
+export async function createHand(rank: Field): Promise<HandProof> {
 
-}
-export async function createHand(deckCards: CardIds, rank: Field) {
-
+	let deckRoot = PlayerInfo.root;
 	console.log("Creating Hand..");
 	let hand0 = HandState.initState(rank);
 	let publicInput0 = new HandPublicInput({
 		state: hand0,
-		deckCards: deckCards,
+		playerDeckRoot: deckRoot,
 	})
 
 	let hproof0 = await HandGen.create(publicInput0, rank);
+
 	let suite = Field(1);
 	let card, cproof;
 
 	console.log(`Adding card of rank:${rank}`);
-	card = CardState.newCard(Field(1), suite, rank);
+	card = CardState.newCard(Field(1), suite, rank, PlayerInfo.sessionKey);
 	console.log(`new card :${rank}`);
-	cproof = await CardGen.checkCard(card, Field(1), suite, rank);
+	cproof = await CardGen.checkCard(card, Field(1), suite, rank,
+													PlayerInfo.sessionKey);
 	console.log(`checked new card :${rank}`);
 
 	let cardId = cproof.publicOutput;
 	let hand = HandState.add(hand0, cardId);
 	let publicInput = new HandPublicInput({
 		state: hand,
-		deckCards: deckCards,
+		playerDeckRoot: deckRoot,
 	})
-	let hproof = await HandGen.add(publicInput, hproof0, cproof);
+	let hproof = await HandGen.add(publicInput, hproof0, cproof, deckRoot);
 
 	console.log(`Creating Hand done for ${rank}}.`);
 	console.log("Handcards[0]:", hproof.publicOutput.ids[0].toBigInt());
+
+	return hproof;
 }
 
-await initHand();
+function __bytesToBigint(bytes: Uint8Array | number[]) {
+  let x = 0n;
+  let bitPosition = 0n;
+  for (let byte of bytes) {
+    x += BigInt(byte) << bitPosition;
+    bitPosition += 8n;
+  }
+  return x;
+}
 
-let cardsdeck = new CardIds({ ids: [...new Array(52)].map((v, i) => {
-								return Poseidon.hash([Field(i)]);
-							})});
-console.log("CARDS:", cardsdeck.ids);
-await createHand(cardsdeck, Field(2));
+var PlayerInfo: Player;
+
+async function _initPlayers () {
+
+	const privateKey = PrivateKey.random();
+	const secret = Field.random();
+	const counter = "1";
+	const _sessionKey = await hkdf('sha256', secret.toString(), '', counter, 32);
+	const sessionKey = Field.from(__bytesToBigint(_sessionKey));
+
+	PlayerInfo = new Player({
+		publicKey: privateKey.toPublicKey(),
+		sessionKey: sessionKey,
+		secret: Field.random(),
+		root: Field.random(), //PlayerDeckMap.getRoot(),
+	});
+
+	console.log("hand:PublicKey:", PlayerInfo.publicKey.toJSON());
+	console.log("hand:Secret:", PlayerInfo.secret.toString());
+	console.log("hand:SessionKey:", PlayerInfo.sessionKey.toString());
+}
+
+console.log("hand:compiling Card circuit...");
+await CardGen.compile();
+console.log("hand:compiling finised");
+
+console.log("hand:compiling Hand circuit...");
+const { verificationKey } = await HandGen.compile();
+console.log("hand:compiling finised");
+
+console.log("\nContinuing..");
+await _initPlayers();
+console.log("\nContinuing..");
+const proof = await createHand(Field(2));
+const ret = await verify(proof, verificationKey);
+console.log("Ret:", ret);
