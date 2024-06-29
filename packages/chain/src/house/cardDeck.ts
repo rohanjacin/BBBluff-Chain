@@ -13,18 +13,9 @@ import { Field,
 		 PrivateKey,
 } from 'o1js';
 
-/*import {
-	Player,
-} from './player';
-*/
-import { hkdf } from '@panva/hkdf';
-
-export class Player extends Struct({
-	publicKey: PublicKey,
-	sessionKey: Field,
-	secret: Field,
-	root: Field,
-}){}
+import {
+	PlayerInfo,
+} from '../player.js';
 
 // Card structure containing 
 // qty - 1
@@ -224,7 +215,8 @@ const DeckGen = Experimental.ZkProgram({
 
 export const DeckProof =  Experimental.ZkProgram.Proof(DeckGen);
 
-export async function initCards(): Promise<DeckState> {
+export async function initCards(players: PlayerInfo[])
+					: Promise<DeckState> {
 
 	// Compile the circuit/program
 	console.log("compiling Card circuit...");
@@ -243,18 +235,18 @@ export async function initCards(): Promise<DeckState> {
 
 	let deck0 = DeckState.initState();
 	let dproof0 = await DeckGen.create(deck0);
-	let deck, dproof;
+	let deck = deck0;
+	let dproof = dproof0;
 
 	// Create card proofs 
-	for (let i = 1, suite = 1, deck = deck0, dproof = dproof0;
-		suite <= 1; suite++) {
+	for (let i = 1, suite = 1; suite <= 1; suite++) {
 
 		for (rank = 1; rank <= 1; rank++, i++) {
 			console.log(`working on card${i}`);
 			card = CardState.newCard(Field(1), Field(suite), Field(rank),
-									PlayerInfo.sessionKey);
+									players[0].sessionKey);
 			cproof = await CardGen.checkCard(card, Field(1), Field(suite),
-									Field(rank), PlayerInfo.sessionKey);
+									Field(rank), players[0].sessionKey);
 			proofJson = cproof.toJSON();
 			console.log("proving card done:", proofJson.proof.length);
 			//console.log("\nProof:", proofJson.proof);
@@ -269,27 +261,23 @@ export async function initCards(): Promise<DeckState> {
 			console.log(`cproof.id:${cproof.publicOutput}`);
 			console.log(`ids[${i-1}]:`, ids);
 
-			let key = Poseidon.hash([PlayerInfo.sessionKey]);
-			let value = cproof.publicOutput;
-			PlayerDeckMap.set(key, value);
-			PlayerInfo.root = PlayerDeckMap.getRoot();
 			deck = DeckState.add(deck, cproof.publicOutput);
 			dproof = await DeckGen.add(deck, dproof, cproof);
 			console.log(`numCards:${dproof.publicInput.numCards.toString()}` +
 				` cards:${dproof.publicInput.cards.ids}`);
-			console.log(`key:`, key);
-			console.log(`value:`, PlayerDeckMap.get(key));
-			console.log(`root:`, PlayerDeckMap.getRoot());
+			//console.log(`key:`, key);
+			//console.log(`value:`, PlayerDeckMap.get(key));
+			//console.log(`root:`, PlayerDeckMap.getRoot());
 			deck = deck;
 			dproof = dproof;
 			console.log("Deckcards[i]:", dproof.publicInput.cards.ids[i-1].toBigInt());
 		}
 	}
 
-	let key = Poseidon.hash(PlayerInfo.publicKey.toFields());
-	let value = PlayerInfo.root;
-	DeckMap.set(key, value);
-	deck.root = DeckMap.getRoot();
+	//let key = Poseidon.hash(players[0]);
+	//let value = PlayerInfo.root;
+	//DeckMap.set(key, value);
+	deck.root = Field.random(); //DeckMap.getRoot();
 
 	let cards = new CardIds({ids});
 	console.log("cards[0]:", cards.ids[0].toBigInt());
@@ -297,43 +285,4 @@ export async function initCards(): Promise<DeckState> {
 	return deck;
 } 
 
-export var PlayerInfo: Player;
-let DeckMap: MerkleMap = new MerkleMap();
-let PlayerDeckMap: MerkleMap = new MerkleMap();
-
-export async function initPlayers () {
-
-	const privateKey = PrivateKey.random();
-	const secret = Field.random();
-	const counter = "1";
-	const _sessionKey = await hkdf('sha256', secret.toString(), '', counter, 32);
-	const sessionKey = Field.from(_bytesToBigint(_sessionKey));
-
-	dealerSessionKey = sessionKey;
-
-	PlayerInfo = new Player({
-		publicKey: privateKey.toPublicKey(),
-		sessionKey: sessionKey,
-		secret: Field.random(),
-		root: PlayerDeckMap.getRoot(),
-	});
-
-	console.log("PublicKey:", PlayerInfo.publicKey.toJSON());
-	console.log("Secret:", PlayerInfo.secret.toString());
-	console.log("SessionKey:", PlayerInfo.sessionKey.toString());
-}
-
-function _bytesToBigint(bytes: Uint8Array | number[]) {
-  let x = 0n;
-  let bitPosition = 0n;
-  for (let byte of bytes) {
-    x += BigInt(byte) << bitPosition;
-    bitPosition += 8n;
-  }
-  return x;
-}
-
-//await init();
-//await initPlayers();
-//await initCards();
-
+//let DeckMap: MerkleMap = new MerkleMap();

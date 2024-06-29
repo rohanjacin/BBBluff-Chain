@@ -1,15 +1,3 @@
-import { 
-	state,
-	runtimeModule,
-	RuntimeModule,
-	runtimeMethod
-} from "@proto-kit/module";
-import {
-	State,
-	StateMap,
-	assert
-} from "@proto-kit/protocol";
-
 import { Struct,
 		 Bool,
 		 Field,
@@ -26,48 +14,47 @@ import { Struct,
 		 VerificationKey,
 } from 'o1js';
 
+import {
+	RuntimeModule, runtimeModule, runtimeMethod, state
+} from '@proto-kit/module';
+
+import { State, StateMap } from '@proto-kit/protocol';
+
 import { hkdf } from '@panva/hkdf';
 
-import { CardState,
+import {
+		 CardState,
 		 CardGen,
 		 CardProof,
 		 DeckState,
 		 DeckProof,
 		 CardIds,
-		 Player,
 } from '../house/cardDeck.js';
 
-/*import { PlayerDeck,
-		 Player,
-		 alice, 
-} from './player.js';
-*/
-class HandInfo extends Struct({
-	numOfCards: UInt64,
-	player: PublicKey
-}) {}
+import {
+	PlayerInfo,
+} from '../player.js';
 
-/*@runtimeModule()
-export class Hands extends RuntimeModule<unknown> {
-	@state() public hand = StateMap.from<Field, HandInfo>(
-		Field,
-		HandInfo,
+@runtimeModule()
+class Hands extends RuntimeModule<unknown> {
+	@state() public hand = StateMap.from<PublicKey, HandState>(
+		PublicKey,
+		HandState,
 	);
 
 	@runtimeMethod()
-	public add(hand: Field , player: PublicKey, numOfCards: UInt64) {
-
-		const curHand = this.hand.get(hand).value;
-		curHand.numOfCards = numOfCards;
-		curHand.player = player;
+	public addHand(address: PublicKey, hand: HandState): void {
+		this.hand.set(address, hand);
 	}
 
 	@runtimeMethod()
-	public transfer(player: PublicKey, cardId: Field) {
+	public revealHand(address: PublicKey): Bool {
+		const ret = new Bool(true);
 
+		return ret;
 	}
 }
-*/
+
 export class HandState extends Struct({
 	numCards: Field,
 	rank: Field,
@@ -207,9 +194,10 @@ export const HandGen = Experimental.ZkProgram({
 
 export class HandProof extends Experimental.ZkProgram.Proof(HandGen){};
 
-export async function createHand(rank: Field): Promise<HandProof> {
+export async function createHand(qty: Field, rank: Field,
+											deckRoot: Field, player: PlayerInfo)
+											: Promise<HandProof> {
 
-	let deckRoot = PlayerInfo.root;
 	console.log("Creating Hand..");
 	let hand0 = HandState.initState(rank);
 	let publicInput0 = new HandPublicInput({
@@ -223,10 +211,10 @@ export async function createHand(rank: Field): Promise<HandProof> {
 	let card, cproof;
 
 	console.log(`Adding card of rank:${rank}`);
-	card = CardState.newCard(Field(1), suite, rank, PlayerInfo.sessionKey);
+	card = CardState.newCard(Field(1), suite, rank, player.sessionKey);
 	console.log(`new card :${rank}`);
 	cproof = await CardGen.checkCard(card, Field(1), suite, rank,
-													PlayerInfo.sessionKey);
+													player.sessionKey);
 	console.log(`checked new card :${rank}`);
 
 	let cardId = cproof.publicOutput;
@@ -253,39 +241,14 @@ function __bytesToBigint(bytes: Uint8Array | number[]) {
   return x;
 }
 
-var PlayerInfo: Player;
+export async function initHand(): Promise<string> {
+	console.log("hand:compiling Card circuit...");
+	await CardGen.compile();
+	console.log("hand:compiling finised");
 
-async function _initPlayers () {
+	console.log("hand:compiling Hand circuit...");
+	const { verificationKey } = await HandGen.compile();
+	console.log("hand:compiling finised");
 
-	const privateKey = PrivateKey.random();
-	const secret = Field.random();
-	const counter = "1";
-	const _sessionKey = await hkdf('sha256', secret.toString(), '', counter, 32);
-	const sessionKey = Field.from(__bytesToBigint(_sessionKey));
-
-	PlayerInfo = new Player({
-		publicKey: privateKey.toPublicKey(),
-		sessionKey: sessionKey,
-		secret: Field.random(),
-		root: Field.random(), //PlayerDeckMap.getRoot(),
-	});
-
-	console.log("hand:PublicKey:", PlayerInfo.publicKey.toJSON());
-	console.log("hand:Secret:", PlayerInfo.secret.toString());
-	console.log("hand:SessionKey:", PlayerInfo.sessionKey.toString());
+	return verificationKey;
 }
-
-console.log("hand:compiling Card circuit...");
-await CardGen.compile();
-console.log("hand:compiling finised");
-
-console.log("hand:compiling Hand circuit...");
-const { verificationKey } = await HandGen.compile();
-console.log("hand:compiling finised");
-
-console.log("\nContinuing..");
-await _initPlayers();
-console.log("\nContinuing..");
-const proof = await createHand(Field(2));
-const ret = await verify(proof, verificationKey);
-console.log("Ret:", ret);

@@ -8,20 +8,42 @@ import {
 	PrivateKey,
 	PublicKey,
 	Field,
+	VerificationKey,
 } from 'o1js';
 
 import {
+	RuntimeModule, runtimeModule, runtimeMethod, state
+} from '@proto-kit/module';
+
+import { State, StateMap } from '@proto-kit/protocol';
+
+import {
 	DeckState,
+	CardProof,
 	initCards,
-} from './cardDeck';
+} from './cardDeck.js';
+
+import {
+	PlayerInfo,
+	initPlayers,
+} from '../player.js';
 
 import {
 	HandProof,
-} from '../player/hand';
+	initHand,
+	createHand,
+} from '../player/hand.js';
 
-class BBBluff extends SmartContract {
-	@method async verifyHand(proof: HandProof) {
-		proof.verify();
+@runtimeModule()
+class BBBluff extends RuntimeModule {
+	@state() public deck = StateMap.from<PublicKey, DeckState>(
+		PublicKey,
+		DeckState
+	);
+
+	@runtimeMethod()
+	public addDeck(address: PublicKey, deck: DeckState): void {
+		this.deck.set(address, deck);
 	}
 }
 
@@ -37,5 +59,15 @@ const dealer = new Dealer({
 	deckMapRoot: Field.random(),
 });
 
-let bbbluff = new BBBluff(dealer.publicKey);
-let deck: DeckState = await initCards();
+let Players: PlayerInfo[] = await initPlayers();
+let deck: DeckState = await initCards(Players);
+let vk = await initHand();
+let proof = await createHand(Field(1), Field(1), 
+					Field.random(), Players[0]);
+
+/*let bbbluff = new BBBluff(dealer.publicKey);
+console.log("Creating transaction");
+let tx = await Mina.transaction(async () => {
+				await bbbluff.verifyHand(proof)});
+let [contractProof] = await tx.prove();
+console.log("DONEE:", contractProof);*/
