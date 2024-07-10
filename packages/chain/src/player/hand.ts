@@ -35,26 +35,6 @@ import {
 	PlayerInfo,
 } from '../player.js';
 
-@runtimeModule()
-class Hands extends RuntimeModule<unknown> {
-	@state() public hand = StateMap.from<PublicKey, HandState>(
-		PublicKey,
-		HandState,
-	);
-
-	@runtimeMethod()
-	public addHand(address: PublicKey, hand: HandState): void {
-		this.hand.set(address, hand);
-	}
-
-	@runtimeMethod()
-	public revealHand(address: PublicKey): Bool {
-		const ret = new Bool(true);
-
-		return ret;
-	}
-}
-
 export class HandState extends Struct({
 	numCards: Field,
 	rank: Field,
@@ -96,6 +76,27 @@ export class HandState extends Struct({
 		//state1.rank.assertEquals(state2.rank);
 	}
 };
+
+@runtimeModule()
+export class Hands extends RuntimeModule<unknown> {
+	@state() public hand = StateMap.from<PublicKey, HandState>(
+		PublicKey,
+		HandState,
+	);
+
+	@runtimeMethod()
+	public addHand(address: PublicKey, hand: HandState): void {
+		console.log("Adding hand..");
+		this.hand.set(address, hand);
+	}
+
+	@runtimeMethod()
+	public revealHand(address: PublicKey): Bool {
+		const ret = new Bool(true);
+
+		return ret;
+	}
+}
 
 export class HandPublicInput extends Struct({
   state: HandState,
