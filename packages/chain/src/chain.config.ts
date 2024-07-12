@@ -1,11 +1,12 @@
-import { ClientAppChain } from '@proto-kit/sdk';
+import { LocalhostAppChain } from "@proto-kit/cli";
 import runtime from "./runtime";
 
-export const client = ClientAppChain.fromRuntime(runtime.modules);
+const appChain = LocalhostAppChain.fromRuntime(runtime.modules);
 
-client.configurePartial({
+appChain.configure({
+  ...appChain.config,
   Runtime: runtime.config,
-  GraphqlClient: {
-    url: 'http://127.0.0.1:8080/graphql',
-  }
 });
+
+// TODO: remove temporary `as any` once `error TS2742` is resolved
+export default appChain as any;

@@ -39,6 +39,10 @@ import {
 	createHand,
 } from '../player/hand.js';
 
+import { EventEmitter } from 'events';
+class MyEmitter extends EventEmitter {}
+const teste = new MyEmitter();
+
 @runtimeModule()
 export class BBBluff extends RuntimeModule {
 	@state() public dealer = State.from<PublicKey>(PublicKey);
@@ -52,6 +56,8 @@ export class BBBluff extends RuntimeModule {
 		PublicKey,
 		UInt64
 	);
+
+	@state() public players = State.from<UInt64>(UInt64);
 
 	public constructor(
 		@inject("Player") public player: Player,
@@ -71,6 +77,12 @@ export class BBBluff extends RuntimeModule {
 	public addPlayers(address: PublicKey, info: PlayerInfo): void {
 		console.log("Adding player..");
 		this.player.addPlayer(address, info);
+		this.players.set(
+			this.players.get().orElse(UInt64.from(0)).add(1));
+		console.log("no of players:", this.players);
+
+		let num_players = this.players.get();
+		teste.emit('test');
 	}
 
 	@runtimeMethod()

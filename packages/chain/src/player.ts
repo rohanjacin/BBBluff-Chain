@@ -21,7 +21,7 @@ export class PlayerInfo extends Struct({
 }){}
 
 @runtimeModule()
-class Player extends RuntimeModule {
+export class Player extends RuntimeModule {
 	@state() public players = StateMap.from<PublicKey, PlayerInfo>(
 		PublicKey,
 		PlayerInfo
