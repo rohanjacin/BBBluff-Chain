@@ -69,7 +69,7 @@ export const usePlayerDeckStore = create<
     async add(client: Client, address: string, info: PlayerInfo) {
       set((state) => {
       });
-      console.log("aaddd");
+/*      console.log("aaddd");
 
       const bbbluff = client.runtime.resolve("BBBluff");
       const player = PublicKey.fromBase58(address);
@@ -83,11 +83,12 @@ export const usePlayerDeckStore = create<
       await tx.sign();
       await tx.send();
 
-      console.log("aaddddone1");
+      let num: UInt64 = bbbluff.players.get();
+      console.log("aaddddone1:",  num);
 
       isPendingTransaction(tx.transaction);
       return tx.transaction;
-
+*/
       set((state) => {
       });
     },
@@ -125,7 +126,7 @@ export const addPlayer = () => {
   }, [client.client, wallet.wallet]);
 };
 
-export const claimCards = () => {
+export const claimCardsq = () => {
   //const client = useClientStore();
   //const wallet = useWalletStore();
   //const playerDeck = usePlayerDeckStore();

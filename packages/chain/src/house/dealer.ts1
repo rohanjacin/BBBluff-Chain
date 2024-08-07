@@ -1,0 +1,28 @@
+import {
+	initCards,
+} from './cardDeck';
+
+class Dealer extends Struct({
+	publicKey: PublicKey,
+	playerSessionKey: Field,
+	deckMapRoot: Field,
+}){};
+
+const dealer = new Dealer({
+	publicKey: PrivateKey.random().toPublicKey(),
+	playerSessionKey: Field.random(),
+	deckMapRoot: Field.random(),
+});
+
+let Players: PlayerInfo[] = await initPlayers();
+let deck: DeckState = await initCards(Players);
+let vk = await initHand();
+let proof = await createHand(Field(1), Field(1), 
+					Field.random(), Players[0]);
+
+let bbbluff = new BBBluff(dealer.publicKey);
+console.log("Creating transaction");
+let tx = await Mina.transaction(async () => {
+				await bbbluff.verifyHand(proof)});
+let [contractProof] = await tx.prove();
+console.log("DONEE:", contractProof);

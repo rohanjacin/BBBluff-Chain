@@ -1,7 +1,21 @@
 "use client";
+
 import "reflect-metadata";
-import AsyncPageDynamic from "@/containers/async-page-dynamic";
+
+import dynamic from 'next/dynamic';
+
+const BBBluff = dynamic(
+  () => import('components/bbbluff-page.tsx'),
+  {
+    ssr: false,
+  } 
+);
 
 export default function Home() {
-  return <AsyncPageDynamic />;
+  return (
+    <div>
+    <BBBluff />
+    HELLO
+    </div>
+  );
 }

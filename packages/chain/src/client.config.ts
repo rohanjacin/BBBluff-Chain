@@ -1,10 +1,20 @@
 import { ClientAppChain } from "@proto-kit/sdk";
 import runtime from "./runtime";
 
-const appChain = ClientAppChain.fromRuntime(runtime.modules);
+export const client = ClientAppChain.fromRuntime(runtime.modules);
+client.configurePartial({
+  Runtime: runtime.config,
+  GraphqlClient: {
+    url:
+      process.env.NEXT_PUBLIC_PROTOKIT_URL || 'http://127.0.0.1:8080/graphql',
+  },
+});
+
+/*const appChain = ClientAppChain.fromRuntime(runtime.modules);
 
 appChain.configurePartial({
   Runtime: runtime.config,
 });
+*/
 
-export const client = appChain;
+//export const client = appChain;

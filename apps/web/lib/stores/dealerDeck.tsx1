@@ -7,87 +7,102 @@ import { PublicKey, UInt64 } from "o1js";
 import { useCallback, useState, useEffect } from "react";
 import { useChainStore } from "./chain";
 import { useWalletStore } from "./wallet";
+import DealerWorkerClient from '@/worker/dealerWorkerClient';
 
-export class DeckState {
-  constructor(numCards, cards, root) {
-    this.numCards = numCards;
-    this.cards = cards;
-    this.root = root;    
-  }
-};
+import {
+  DeckState,
+} from 'bbbluff-chain/dist/src/house/cardDeck';
 
+// Deck store
 export interface DeckStore {
-  Deck: DeckState;
+  deck: DeckState;
+  init: () => Promise<DealerWorkerClient>;
   add: (client: Client, address: string, deck: DeckState) => Promise<void>;
 }
 
-function isPendingTransaction(
-  transaction: PendingTransaction | UnsignedTransaction | undefined,
-): asserts transaction is PendingTransaction {
-  if (!(transaction instanceof PendingTransaction))
-    throw new Error("Transaction is not a PendingTransaction");
-}
-
-export var deck = new DeckState(); 
-
-export const useCardDeckStore = create<
+export const useDeckStore = create<
   DeckStore,
   [["zustand/immer", never]]
 >(
   immer((set) => ({
-    Deck: { numCards: 0, cards: [...new Array(52)], root: 0n },
+    Deck: undefined as DeckState | undefined,
+
+    // Init the game
+    async init() {
+      set((state) => {
+      });
+
+      const workerClient = new DealerWorkerClient();
+      
+      // Wait for worker to be up
+      await workerClient.init();
+
+      // Init the deck and card circuits
+      const status = await workerClient.initDeck();
+
+      appChain.setSigner(dealerPrivateKey);
+
+      const bbbluff = appChain.runtime.resolve("BBBluff");
+      const dealer = PublicKey.fromBase58(address);
+
+      const tx = await appChain.transaction(dealer, () => {
+          bbbluff.init();
+      });
+
+      await tx.sign();
+      await tx.send();
+
+      set((state) => {
+      });
+
+    }
+
+    // Add the deck
     async add(client: Client, address: string, deck: DeckState) {
+      set((state) => {
+      });
+
+      const workerClient = new DealerWorkerClient();
+      
+      // Prove cards and deck 
+      const deckProof = await workerClient.proveDeck();
+
+      const bbbluff = client.runtime.resolve("BBBluff");
+      const dealer = PublicKey.fromBase58(address);
+
+      const tx = await client.transaction(dealer, (deck) => {
+        bbbluff.addDeck(deck);
+      });
+
+      await tx.sign();
+      await tx.send();
+
+      set((state) => {
+      });
+    },
+
+    // Start the game
+    async start(client: Client, address: string, deck: DeckState) {
       set((state) => {
       });
 
       const bbbluff = client.runtime.resolve("BBBluff");
       const dealer = PublicKey.fromBase58(address);
 
-      const tx = await client.transaction(dealer, (deck) => {
-        bbbluff.addDeck(dealer, deck);
+      const tx = await client.transaction(dealer, () => {
+        bbbluff.start();
       });
 
       await tx.sign();
       await tx.send();
 
-      isPendingTransaction(tx.transaction);
-      return tx.transaction;
-
       set((state) => {
       });
-    },
+    },    
   })),
 );
 
-export const addDeck = () => {
-  const client = useClientStore();
-  const wallet = useWalletStore();
-  let cardDeck;
-
-  console.log("Addddddeck");
-  try {
-    console.log("in try catch");
-
-    cardDeck = useCardDeckStore();
-  }
-  catch(e) {
-    console.log("e:", e);
-  }
-
-  return useCallback(async () => {
-    if (!client.client || !wallet.wallet) return;
-
-    const pendingTransaction = await cardDeck.add(
-      client.client,
-      wallet.wallet,
-      deck,
-    );
-
-    wallet.addPendingTransaction(pendingTransaction);
-  }, [client.client, wallet.wallet]);
-};
-
-export const uploadDeck = (file) => {
+/*export const uploadDeck = (file) => {
   const client = useClientStore();
   const wallet = useWalletStore();
 
@@ -107,8 +122,8 @@ export const uploadDeck = (file) => {
       }
   }, [client.client, wallet.wallet]);
 };
-
-import defaultImage from '@/public/clubs.png';
+*/
+/*import defaultImage from '@/public/clubs.png';
 
 export const getCardImage = (idx) => { 
   const cardDeck = useCardDeckStore();
@@ -132,4 +147,4 @@ export const getCardImage = (idx) => {
 
   console.log("Card image is:", image);
   return image;
-}
+}*/

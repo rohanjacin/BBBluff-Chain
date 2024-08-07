@@ -1,0 +1,14 @@
+'use client';
+
+export interface NetworkState {
+	walletConnected: boolean;
+	connectWallet: () => Promise<void>;
+	address: string | undefined;
+}
+
+export const useNetworkStore = create<NetworkState, [['zustand/immer', never]]> (
+
+	immer((set) => ({
+		
+	})
+)
